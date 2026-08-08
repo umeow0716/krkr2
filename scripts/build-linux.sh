@@ -1,6 +1,11 @@
 #!/bin/bash
 
-cmake --preset="Linux Debug Config" -DDISABLE_TEST=ON
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "${script_dir}/.."
+
+cmake --preset="Linux Debug Config" -DENABLE_TESTS=OFF
 cmake --build --preset="Linux Debug Build"
 
 if [ ! -f "/usr/lib/libfmod.so" ]; then

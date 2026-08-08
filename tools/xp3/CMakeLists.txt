@@ -8,13 +8,19 @@ add_executable(${PROJECT_NAME}
 find_package(argparse CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE argparse::argparse)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    tjs2
-    core_io
-    core_storage_tool
-)
+if(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        tjs2
+        "$<LINK_GROUP:RESCAN,core_storage_tool,core_io,archive_xp3>"
+    )
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        tjs2
+        core_io
+        core_storage_tool
+    )
+endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     PROGRAM_NAME="${PROJECT_NAME}"
     VERSION="${PROJECT_VERSION}"
 )
-
