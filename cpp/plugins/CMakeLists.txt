@@ -22,6 +22,7 @@ target_sources(${PROJECT_NAME} PUBLIC
     layerExPerspective.cpp
     fftgraph.cpp
     LayerExBase.cpp
+    shrinkCopy.cpp
     xp3filter.cpp
 )
 

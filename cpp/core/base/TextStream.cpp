@@ -83,13 +83,20 @@ public:
         if(size >= 3 && raw[0] == 0xFE && raw[1] == 0xFE) {
             std::uint8_t m = raw[2];
             if(m == 0 || m == 1) {
-                // 解密 UTF-16 数据
-                const auto *src =
-                    reinterpret_cast<const char16_t *>(raw.data() + 4);
-                size_t len = (size - 4) / 2;
+                // FE FE <mode> is followed by the original UTF-16LE BOM.
+                // The payload therefore starts at byte 5, not byte 4.
+                constexpr size_t headerSize = 5;
+                if(size < headerSize || raw[3] != 0xFF || raw[4] != 0xFE ||
+                   ((size - headerSize) & 1) != 0)
+                    TVPThrowExceptionMessage(TVPUnsupportedCipherMode, name);
+
+                const size_t len = (size - headerSize) / 2;
                 _buffer.resize(len);
                 for(size_t i = 0; i < len; i++) {
-                    char16_t ch = src[i];
+                    const size_t pos = headerSize + i * 2;
+                    char16_t ch = static_cast<char16_t>(
+                        raw[pos] | (static_cast<std::uint16_t>(raw[pos + 1])
+                                    << 8));
                     if(m == 0) {
                         if(ch >= 0x20)
                             ch ^= (((ch & 0xfe) << 8) ^ 1);
@@ -136,6 +143,7 @@ public:
         std::uint8_t bomSize = 0;
         std::string encoding = checkTextEncoding(raw.data(), size, bomSize);
         raw.erase(raw.begin(), raw.begin() + bomSize);
+        size = raw.size();
 
         if(encoding.empty())
             encoding = G_DefaultReadEncoding; // 默认回退

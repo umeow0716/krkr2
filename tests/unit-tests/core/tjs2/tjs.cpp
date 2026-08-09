@@ -2,6 +2,7 @@
 // Created by LiDong on 2025/8/28.
 //
 
+#include <filesystem>
 #include <fstream>
 #include <catch2/catch_test_macros.hpp>
 
@@ -23,6 +24,26 @@ public:
     }
 } static iTJSConsoleOutputDef{};
 
+TEST_CASE("round-trip Kirikiri mode-1 encrypted text") {
+    const auto path =
+        std::filesystem::temp_directory_path() / "krkr2-text-mode1-test.tjs";
+    std::filesystem::remove(path);
+
+    const ttstr expected(TJS_W("/* encrypted text */\r\n日本語テスト\r\n"));
+    auto *writer =
+        TVPCreateTextStreamForWrite(ttstr(path.string()), TJS_W("c1"));
+    writer->Write(expected);
+    writer->Destruct();
+
+    ttstr actual;
+    auto *reader =
+        TVPCreateTextStreamForRead(ttstr(path.string()), TJS_W(""));
+    reader->Read(actual, 0);
+    reader->Destruct();
+    std::filesystem::remove(path);
+
+    REQUIRE(actual == expected);
+}
 
 TEST_CASE("exec tjs2 script") {
     const auto tvPScriptEngine = new tTJS();

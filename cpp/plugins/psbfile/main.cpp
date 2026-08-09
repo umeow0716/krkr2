@@ -11,7 +11,6 @@
 #include "ncbind.hpp"
 #include "PSBFile.h"
 #include "PSBHeader.h"
-#include "PSBMedia.h"
 #include "PSBMediaRegistry.h"
 #include "PSBValue.h"
 
@@ -20,7 +19,6 @@
 #define LOGGER spdlog::get("plugin")
 
 using namespace PSB;
-static PSBMedia *psbMedia = nullptr;
 
 void initPsbFile() { initPSBMedia(); }
 
@@ -56,16 +54,8 @@ static tjs_error load(tTJSVariant *r, tjs_int count, tTJSVariant **p,
         if(!self->loadPSBFile(path)) {
             LOGGER->info("cannot load psb file : {}", path.AsStdString());
             loadSuccess = false;
-        }
-        auto objs = self->getObjects();
-        for(const auto &[k, v] : *objs) {
-            const auto &res = std::dynamic_pointer_cast<PSBResource>(v);
-            if(res == nullptr)
-                continue;
-            ttstr pathN{ k };
-            psbMedia->NormalizeDomainName(path);
-            psbMedia->NormalizePathName(pathN);
-            psbMedia->add((path + TJS_W("/") + pathN).AsStdString(), res);
+        } else {
+            registerRootResources(path, *self);
         }
     } else if((*p)->Type() == tvtOctet) {
         LOGGER->critical("PSBFile::load stream no implement!");
