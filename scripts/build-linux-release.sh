@@ -6,7 +6,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "${script_dir}/.."
 
 cmake --preset="Linux Release Config" -DENABLE_TESTS=OFF -DBUILD_TOOLS=OFF
-cmake --build --preset="Linux Release Build" -j16
+cmake --build --preset="Linux Release Build"
 
 if [ ! -f "/usr/lib/libfmod.so" ]; then
     echo "install libfmod.so."
