@@ -2,7 +2,10 @@
 
 #include <vector>
 #include "FontImpl.h"
+#include "FontSystem.h"
 using namespace std;
+
+extern FontSystem *TVPFontSystem;
 
 #define NCB_MODULE_NAME TJS_W("addFont.dll")
 
@@ -22,6 +25,11 @@ struct FontEx {
         ttstr filename = TVPGetPlacedPath(*param[0]);
         if(filename.length()) {
             int ret = TVPEnumFontsProc(filename);
+            if(ret > 0) {
+                if(TVPFontSystem)
+                    TVPFontSystem->RefreshFontNames();
+                TVPNotifyFontChanged();
+            }
             if(result) {
                 *result = (int)ret;
             }

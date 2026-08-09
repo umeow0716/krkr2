@@ -16,6 +16,50 @@
 #include "SystemImpl.h"
 #include "vkdefine.h"
 
+namespace {
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) ||                               \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_MAC) ||                                 \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
+bool TVPDesktopFullScreen = false;
+cocos2d::Size TVPDesktopWindowedSize;
+#endif
+} // namespace
+
+void iWindowLayer::SetFullScreenMode(bool fullscreen) {
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) ||                               \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_MAC) ||                                 \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
+    auto *view = dynamic_cast<cocos2d::GLViewImpl *>(
+        cocos2d::Director::getInstance()->getOpenGLView());
+    if(!view || view->isFullscreen() == fullscreen)
+        return;
+
+    if(fullscreen) {
+        TVPDesktopWindowedSize = view->getFrameSize();
+        view->setFullscreen();
+    } else {
+        const int width = static_cast<int>(TVPDesktopWindowedSize.width);
+        const int height = static_cast<int>(TVPDesktopWindowedSize.height);
+        view->setWindowed(width > 0 ? width : 960, height > 0 ? height : 640);
+    }
+    TVPDesktopFullScreen = view->isFullscreen();
+#else
+    (void)fullscreen;
+#endif
+}
+
+bool iWindowLayer::GetFullScreenMode() const {
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) ||                               \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_MAC) ||                                 \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
+    auto *view = dynamic_cast<cocos2d::GLViewImpl *>(
+        cocos2d::Director::getInstance()->getOpenGLView());
+    return view ? view->isFullscreen() : TVPDesktopFullScreen;
+#else
+    return false;
+#endif
+}
+
 tTJSNI_Window *TVPWindowLayer::TVPGetActiveWindow() {
     if(!_currentWindowLayer)
         return nullptr;

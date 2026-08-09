@@ -46,6 +46,7 @@ class FontSystem {
 
 public:
     FontSystem();
+    void RefreshFontNames();
     ttstr GetBeingFont(ttstr fonts);
     [[nodiscard]] const tTVPFont &GetDefaultFont() const { return DefaultFont; }
 };

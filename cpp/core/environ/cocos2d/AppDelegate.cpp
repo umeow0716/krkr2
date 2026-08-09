@@ -42,7 +42,8 @@ bool TVPAppDelegate::applicationDidFinishLaunching() {
         glview = cocos2d::GLViewImpl::createWithRect(
             "krkr2",
             cocos2d::Rect(0, 0, designResolutionSize.width,
-                          designResolutionSize.height));
+                          designResolutionSize.height),
+            1.0f, true);
 #else
         glview = cocos2d::GLViewImpl::create("krkr2");
 #endif

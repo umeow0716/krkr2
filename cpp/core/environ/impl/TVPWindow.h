@@ -110,7 +110,7 @@ public:
     void SetPosition(tjs_int, tjs_int) {}
     void SetBorderStyle(tTVPBorderStyle) {}
     void SetStayOnTop(bool) {}
-    void SetFullScreenMode(bool) {}
+    void SetFullScreenMode(bool fullscreen);
     tjs_int GetLeft() const { return 0; }
     tjs_int GetTop() const { return 0; }
     tjs_int GetMinWidth() const { return 0; }
@@ -120,7 +120,7 @@ public:
     tjs_int GetInnerWidth() const { return GetWidth(); }
     tjs_int GetInnerHeight() const { return GetHeight(); }
     bool GetStayOnTop() const { return false; }
-    bool GetFullScreenMode() const { return false; }
+    bool GetFullScreenMode() const;
     [[nodiscard]] tTVPBorderStyle GetBorderStyle() const { return bsNone; }
     void SetTrapKey(bool b) {}
     [[nodiscard]] bool GetTrapKey() const { return false; }

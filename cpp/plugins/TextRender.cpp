@@ -277,6 +277,12 @@ struct CharacterInfo {
     }
 };
 
+enum TextRenderAlignment {
+    kTextRenderAlignmentLeft = -1,
+    kTextRenderAlignmentCenter = 0,
+    kTextRenderAlignmentRight = 1,
+};
+
 #define property_accessor(name, type, storage)                                 \
     type get_##name() const { return storage; }                                \
     void set_##name(type v) { storage = v; }
@@ -375,6 +381,7 @@ private:
     bool m_isBeginningOfLine = true;
 
     bool m_vertical = false;
+    TextRenderAlignment m_alignment = kTextRenderAlignmentCenter;
 
     TextRenderOptions m_options{};
     TextRenderState m_default{};
@@ -388,13 +395,8 @@ private:
     void pushGraphicalCharacter(ttstr const &graph);
     void performLinebreak();
     void flush(bool force = false);
+    void applyAlignment();
     void updateFont();
-};
-
-enum TextRenderAlignment {
-    kTextRenderAlignmentLeft = -1,
-    kTextRenderAlignmentCenter = 0,
-    kTextRenderAlignmentRight = 1,
 };
 
 enum TextRenderMode {
@@ -587,14 +589,17 @@ bool TextRenderBase::render(tTJSString text, int autoIndent, int diff, int all,
                         dbg_print(TJS_W("reset"));
                         resetFont();
                         break;
-                    case 'C': // TODO: Centre
+                    case 'C':
                         dbg_print(TJS_W("centre"));
+                        m_alignment = kTextRenderAlignmentCenter;
                         break;
-                    case 'R': // TODO: Right
+                    case 'R':
                         dbg_print(TJS_W("right"));
+                        m_alignment = kTextRenderAlignmentRight;
                         break;
-                    case 'L': // TODO: Left
+                    case 'L':
                         dbg_print(TJS_W("left"));
+                        m_alignment = kTextRenderAlignmentLeft;
                         break;
                     case 'l': {
                         dbg_print(TJS_W("left"));
@@ -976,6 +981,58 @@ void TextRenderBase::flush(bool force) {
     m_buffer.clear();
 }
 
+void TextRenderBase::applyAlignment() {
+    if(m_characters.empty() || m_boxWidth <= 0 || m_boxHeight <= 0 ||
+       m_alignment == kTextRenderAlignmentLeft) {
+        return;
+    }
+
+    // TextRenderBase returns glyph positions to TJS instead of drawing the
+    // text itself.  Keep wrapping left based, then move each completed line
+    // into its requested position once every glyph extent is known.
+    for(size_t begin = 0; begin < m_characters.size();) {
+        size_t end = begin + 1;
+        auto const lineY = m_characters[begin].y;
+        while(end < m_characters.size() && m_characters[end].y == lineY) {
+            ++end;
+        }
+
+        auto const lineLeft = m_characters[begin].x;
+        auto lineRight = lineLeft;
+        for(size_t i = begin; i < end; ++i) {
+            lineRight = std::max(lineRight,
+                                 m_characters[i].x + m_characters[i].cw);
+        }
+
+        auto const lineWidth = lineRight - lineLeft;
+        auto const targetLeft =
+            m_alignment == kTextRenderAlignmentCenter
+                ? std::max(0, (m_boxWidth - lineWidth) / 2)
+                : std::max(0, m_boxWidth - lineWidth);
+        auto const offsetX = targetLeft - lineLeft;
+        for(size_t i = begin; i < end; ++i) {
+            m_characters[i].x += offsetX;
+        }
+
+        begin = end;
+    }
+
+    auto top = m_characters.front().y;
+    auto bottom = top + m_characters.front().size;
+    for(auto const &ch : m_characters) {
+        top = std::min(top, ch.y);
+        bottom = std::max(bottom, ch.y + ch.size);
+    }
+
+    auto const blockHeight = bottom - top;
+    constexpr int kVerticalAdjustment = -7;
+    auto const offsetY = std::max(0, (m_boxHeight - blockHeight) / 2) - top +
+                         kVerticalAdjustment;
+    for(auto &ch : m_characters) {
+        ch.y += offsetY;
+    }
+}
+
 void TextRenderBase::setRenderSize(int width, int height) {
     m_boxWidth = width;
     m_boxHeight = height;
@@ -1024,6 +1081,8 @@ void TextRenderBase::clear() {
     m_x = 0;
     m_y = 0;
     m_indent = 0;
+    m_autoIndent = 0;
+    m_alignment = kTextRenderAlignmentCenter;
 
     m_isBeginningOfLine = true;
 
@@ -1047,6 +1106,7 @@ void TextRenderBase::updateFont() {
 void TextRenderBase::done() {
     dbg_print(TJS_W("flush character buffer"));
     flush();
+    applyAlignment();
 }
 
 void TextRenderBase::resetFont() { m_state = m_default; }

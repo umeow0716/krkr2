@@ -79,6 +79,14 @@ void FreeTypeFontRasterizer::Release() {
     }
 }
 //---------------------------------------------------------------------------
+void FreeTypeFontRasterizer::InvalidateFontFace() {
+    delete Face;
+    Face = nullptr;
+    delete FaceFallback;
+    FaceFallback = nullptr;
+    LastBitmap = nullptr;
+}
+//---------------------------------------------------------------------------
 void FreeTypeFontRasterizer::ApplyFont(class tTVPNativeBaseBitmap *bmp,
                                        bool force) {
     if(bmp != LastBitmap || force) {

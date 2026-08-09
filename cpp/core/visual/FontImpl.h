@@ -8,6 +8,7 @@ const FT_Library TVPGetFontLibrary();
 
 void TVPInitFontNames();
 int TVPEnumFontsProc(const ttstr &FontPath);
+void TVPNotifyFontChanged();
 const ttstr &TVPGetDefaultFontName();
 tTJSBinaryStream *TVPCreateFontStream(const ttstr &fontname);
 struct TVPFontNamePathInfo {

@@ -63,6 +63,13 @@
     "oniguruma",
     "openal-soft",
     {
+      "name": "openal-soft",
+      "features": [
+        "pulseaudio"
+      ],
+      "platform": "linux"
+    },
+    {
       "name": "opencv4",
       "default-features": false,
       "features": [

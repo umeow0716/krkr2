@@ -23,8 +23,7 @@ tTJSHashTable<ttstr, TVPFontNamePathInfo, tTVPttstrHash> TVPFontNames;
 static ttstr TVPDefaultFontName;
 const ttstr &TVPGetDefaultFontName() { return TVPDefaultFontName; }
 void TVPGetAllFontList(std::vector<ttstr> &list) {
-    auto itend = TVPFontNames.GetLast();
-    for(auto it = TVPFontNames.GetFirst(); it != itend; ++it) {
+    for(auto it = TVPFontNames.GetFirst(); !it.IsNull(); ++it) {
         list.push_back(it.GetKey());
     }
 }
@@ -73,33 +72,30 @@ static int TVPInternalEnumFonts(
         }
         if(FT_IS_SCALABLE(fontface)) {
             FT_UInt namecount = FT_Get_Sfnt_Name_Count(fontface);
-            int addCount = 0;
+            auto addFontName = [&](const ttstr &fontname) {
+                if(fontname.IsEmpty())
+                    return;
+                TVPFontNamePathInfo info;
+                info.Path = FontPath;
+                info.Index = i;
+                info.Getter = getter;
+                TVPFontNames.Add(fontname, info);
+            };
             for(FT_UInt j = 0; j < namecount; ++j) {
                 FT_SfntName name;
                 if(FT_Get_Sfnt_Name(fontface, j, &name)) {
                     continue;
                 }
-                if(name.name_id != TT_NAME_ID_FONT_FAMILY) {
+                if(name.name_id != TT_NAME_ID_FONT_FAMILY &&
+                   name.name_id != TT_NAME_ID_FULL_NAME) {
                     continue;
                 }
                 if(name.platform_id != TT_PLATFORM_MICROSOFT) {
                     continue;
                 }
-                switch(name.language_id) { // for CJK names
-                    case TT_MS_LANGID_JAPANESE_JAPAN:
-                    case TT_MS_LANGID_CHINESE_GENERAL:
-                    case TT_MS_LANGID_CHINESE_TAIWAN:
-                    case TT_MS_LANGID_CHINESE_PRC:
-                    case TT_MS_LANGID_CHINESE_HONG_KONG:
-                    case TT_MS_LANGID_CHINESE_SINGAPORE:
-                    case TT_MS_LANGID_KOREAN_EXTENDED_WANSUNG_KOREA:
-                    case TT_MS_LANGID_KOREAN_JOHAB_KOREA:
-                        break;
-                    default:
-                        continue;
-                }
                 ttstr fontname;
-                if(name.encoding_id == TT_MS_ID_UNICODE_CS) {
+                if(name.encoding_id == TT_MS_ID_UNICODE_CS ||
+                   name.encoding_id == TT_MS_ID_UCS_4) {
                     std::vector<tjs_char> tmp;
                     int namelen = name.string_len / 2;
                     tmp.resize(namelen + 1);
@@ -111,20 +107,15 @@ static int TVPInternalEnumFonts(
                 } else {
                     continue;
                 }
-                TVPFontNamePathInfo info;
-                info.Path = FontPath;
-                info.Index = j;
-                info.Getter = getter;
-                TVPFontNames.Add(fontname, info);
-                addCount = 1;
+                addFontName(fontname);
             }
             /*if (!addCount)*/ {
-                ttstr fontname((tjs_nchar *)fontface->family_name);
-                TVPFontNamePathInfo info;
-                info.Path = FontPath;
-                info.Index = i;
-                info.Getter = getter;
-                TVPFontNames.Add(fontname, info);
+                ttstr familyName((tjs_nchar *)fontface->family_name);
+                addFontName(familyName);
+                if(fontface->style_name && *fontface->style_name) {
+                    addFontName(familyName + TJS_W(" ") +
+                                ttstr((tjs_nchar *)fontface->style_name));
+                }
             }
             ++faceCount;
         }

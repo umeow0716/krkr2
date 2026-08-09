@@ -230,6 +230,15 @@ void TVPSetFontCacheForLowMem() {
 }
 //---------------------------------------------------------------------------
 void TVPClearFontCache() { TVPFontCache.Clear(); }
+void TVPNotifyFontChanged() {
+    TVPClearFontCache();
+    if(TVPFontRasterizersInit) {
+        static_cast<FreeTypeFontRasterizer *>(
+            TVPFontRasterizers[FONT_RASTER_FREE_TYPE])
+            ->InvalidateFontFace();
+    }
+    TVPGlobalFontStateMagic++;
+}
 //---------------------------------------------------------------------------
 struct tTVPClearFontCacheCallback : public tTVPCompactEventCallbackIntf {
     void OnCompact(tjs_int level) override {

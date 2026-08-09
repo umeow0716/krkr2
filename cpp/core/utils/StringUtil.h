@@ -34,7 +34,7 @@ inline bool icomp(const std::wstring &x, const std::wstring &y) {
 static int ttstr_find_first_not_of(const ttstr &str, const ttstr &r) {
     const tjs_char *const pend = str.c_str() + str.length();
     for(const tjs_char *p = str.c_str(); p < pend; ++p) {
-        if(r.IndexOf(*p) != -1) {
+        if(r.IndexOf(*p) == -1) {
             return p - str.c_str();
         }
     }
@@ -43,11 +43,11 @@ static int ttstr_find_first_not_of(const ttstr &str, const ttstr &r) {
 
 static int ttstr_find_last_not_of(const ttstr &str, const ttstr &r) {
     const tjs_char *pbegin = str.c_str();
-    for(const tjs_char *p = str.c_str() + str.length();; --p) {
-        if(r.IndexOf(*p) != -1)
-            return (p - str.c_str()); // found a match
-        else if(p == pbegin)
-            break; // at beginning, no more chance for match
+    const tjs_char *p = pbegin + str.length();
+    while(p != pbegin) {
+        --p;
+        if(r.IndexOf(*p) == -1)
+            return p - pbegin;
     }
     return -1;
 }

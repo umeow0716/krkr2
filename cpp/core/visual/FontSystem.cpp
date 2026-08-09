@@ -16,6 +16,10 @@ void FontSystem::InitFontNames() {
     if(FontNamesInit)
         return;
 
+    RefreshFontNames();
+}
+
+void FontSystem::RefreshFontNames() {
     std::vector<ttstr> list;
     TVPGetAllFontList(list);
     size_t count = list.size();

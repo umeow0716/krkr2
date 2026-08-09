@@ -19,6 +19,7 @@ public:
     ~FreeTypeFontRasterizer() override;
     void AddRef() override;
     void Release() override;
+    void InvalidateFontFace();
     void ApplyFont(class tTVPNativeBaseBitmap *bmp, bool force) override;
     void ApplyFont(const struct tTVPFont &font) override;
     void GetTextExtent(tjs_char ch, tjs_int &w, tjs_int &h) override;
