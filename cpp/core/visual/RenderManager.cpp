@@ -1,5 +1,4 @@
 #include "RenderManager.h"
-#include <cstdio>
 #include "renderer/CCTexture2D.h"
 typedef cocos2d::Texture2D::PixelFormat CCPixelFormat;
 #include "MsgIntf.h"
@@ -4939,11 +4938,6 @@ iTVPRenderManager *TVPGetRenderManager() {
 
     if(!_RenderManager) {
         _RenderManager = TVPGetRenderManager(TJS_W("opengl"));
-
-        std::fprintf(
-            stderr,
-            "[render-manager] active=%s\n",
-            _RenderManager->IsSoftware() ? "software" : "opengl");
     }
 
     return _RenderManager;

@@ -27,8 +27,6 @@
 #include "pvrtc.h"
 #include "pvr.h"
 #include "RenderUtils.h"
-#include <chrono>
-#include <cstdio>
 
 // #define TEST_SHADER_ENABLED
 #ifndef GL_ETC1_RGB8_OES
@@ -2489,75 +2487,6 @@ static const char *_glExtensions = nullptr;
 // static bool _duplicateTargetTexture = true;
 class TVPRenderManager_OpenGL : public iTVPRenderManager {
 protected:
-    using PerfClock = std::chrono::steady_clock;
-    PerfClock::time_point _perfLastReport = PerfClock::now();
-    uint64_t _perfRectCalls = 0;
-    uint64_t _perfTriangleCalls = 0;
-    uint64_t _perfTargetAsSrcRect = 0;
-    uint64_t _perfTargetAsSrcTriangle = 0;
-    uint64_t _perfShadowNative = 0;
-    uint64_t _perfShadowHits = 0;
-    uint64_t _perfShadowCreates = 0;
-    uint64_t _perfShadowUpdates = 0;
-    uint64_t _perfShadowUploadBytes = 0;
-    uint64_t _perfTargetCopies = 0;
-    uint64_t _perfTargetCopyPixels = 0;
-    uint64_t _perfCopyImageCalls = 0;
-    uint64_t _perfCopyDrawCalls = 0;
-    uint64_t _perfTempReallocs = 0;
-    uint64_t _perfTextureBarrierDraws = 0;
-
-    void MaybeReportOGLProfile() {
-        const auto now = PerfClock::now();
-        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - _perfLastReport).count();
-        if(elapsedMs < 1000)
-            return;
-
-        const double seconds = elapsedMs / 1000.0;
-        const double uploadMB = _perfShadowUploadBytes / (1024.0 * 1024.0);
-        const double targetCopyMPix = _perfTargetCopyPixels / 1000000.0;
-        const double targetCopyMB = (_perfTargetCopyPixels * 4.0) / (1024.0 * 1024.0);
-
-        std::fprintf(
-            stderr,
-            "[ogl-prof] %.2fs rect=%llu tri=%llu tarSrc(rect=%llu tri=%llu) "
-            "shadow(native=%llu hit=%llu create=%llu update=%llu upload=%.1fMB %.1fMB/s) "
-            "targetCopy=%llu %.1fMPix %.1fMB copyImage=%llu copyDraw=%llu tempRealloc=%llu texBarrier=%llu\n",
-            seconds,
-            (unsigned long long)_perfRectCalls,
-            (unsigned long long)_perfTriangleCalls,
-            (unsigned long long)_perfTargetAsSrcRect,
-            (unsigned long long)_perfTargetAsSrcTriangle,
-            (unsigned long long)_perfShadowNative,
-            (unsigned long long)_perfShadowHits,
-            (unsigned long long)_perfShadowCreates,
-            (unsigned long long)_perfShadowUpdates,
-            uploadMB, uploadMB / seconds,
-            (unsigned long long)_perfTargetCopies,
-            targetCopyMPix, targetCopyMB,
-            (unsigned long long)_perfCopyImageCalls,
-            (unsigned long long)_perfCopyDrawCalls,
-            (unsigned long long)_perfTempReallocs,
-            (unsigned long long)_perfTextureBarrierDraws);
-
-        _perfLastReport = now;
-        _perfRectCalls = 0;
-        _perfTriangleCalls = 0;
-        _perfTargetAsSrcRect = 0;
-        _perfTargetAsSrcTriangle = 0;
-        _perfShadowNative = 0;
-        _perfShadowHits = 0;
-        _perfShadowCreates = 0;
-        _perfShadowUpdates = 0;
-        _perfShadowUploadBytes = 0;
-        _perfTargetCopies = 0;
-        _perfTargetCopyPixels = 0;
-        _perfCopyImageCalls = 0;
-        _perfCopyDrawCalls = 0;
-        _perfTempReallocs = 0;
-        _perfTextureBarrierDraws = 0;
-    }
     tTVPOGLRenderMethod_Script *
     GetRenderMethodFromScript(const char *script, int nTex,
                               unsigned int flags) override {
@@ -4233,10 +4162,8 @@ public:
         if(!src)
             return nullptr;
 
-        if(auto *ogl = dynamic_cast<tTVPOGLTexture2D *>(src)) {
-            ++_perfShadowNative;
+        if(auto *ogl = dynamic_cast<tTVPOGLTexture2D *>(src))
             return ogl;
-        }
 
         // tTVPBaseBitmap/MotionPlayer legitimately supplies CPU-backed
         // software textures to the OpenGL renderer.  Keep one mutable OpenGL
@@ -4257,7 +4184,6 @@ public:
             if(cached && cached->GetWidth() == src->GetWidth() &&
                cached->GetHeight() == src->GetHeight()) {
                 if(cachedRevision != sourceRevision) {
-                    ++_perfShadowUpdates;
                     const void *pixels = src->GetPixelData();
                     const int pitch = src->GetPitch();
                     if(!pixels || pitch <= 0) {
@@ -4265,14 +4191,10 @@ public:
                             "OpenGL renderer cannot refresh source texture pixels"));
                     }
 
-                    _perfShadowUploadBytes +=
-                        static_cast<uint64_t>(pitch) * src->GetHeight();
                     cached->Update(
                         pixels, src->GetFormat(), pitch,
                         tTVPRect(0, 0, src->GetWidth(), src->GetHeight()));
                     src->SetRenderCache(this, cached, sourceRevision);
-                } else {
-                    ++_perfShadowHits;
                 }
                 return cached;
             }
@@ -4284,10 +4206,6 @@ public:
             TVPThrowExceptionMessage(
                 TJS_W("OpenGL renderer cannot read source texture pixels"));
         }
-
-        ++_perfShadowCreates;
-        _perfShadowUploadBytes +=
-            static_cast<uint64_t>(pitch) * src->GetHeight();
 
         // Use a mutable texture for the shadow so later CPU writes can be
         // propagated with glTexSubImage2D without reallocating the GPU object.
@@ -4318,11 +4236,8 @@ public:
     tTVPOGLTexture2D *GetTempTexture2D(tTVPOGLTexture2D *src,
                                        const tTVPRect &rcsrc) {
         unsigned int w = rcsrc.get_width(), h = rcsrc.get_height();
-        ++_perfTargetCopies;
-        _perfTargetCopyPixels += static_cast<uint64_t>(w) * h;
         if(!tempTexture || tempTexture->internalW < w ||
            tempTexture->internalH < h) {
-            ++_perfTempReallocs;
             if(tempTexture)
                 tempTexture->Release();
             tempTexture = new tTVPOGLTexture2D_mutatble(
@@ -4625,7 +4540,6 @@ public:
         if(GL::glCopyImageSubData && !src->IsCompressed &&
            src->_scaleW == dst->_scaleW && src->_scaleH == dst->_scaleH &&
            src->Format == dst->Format) {
-            ++_perfCopyImageCalls;
             tTVPRect rc;
             rc.left = rcsrc.left * src->_scaleW + 0.5f;
             rc.right = rcsrc.right * src->_scaleW;
@@ -4668,7 +4582,6 @@ public:
             return;
         }
 
-        ++_perfCopyDrawCalls;
         static tTVPOGLRenderMethod *method =
             (tTVPOGLRenderMethod *)GetRenderMethod("Copy");
         static const GLfloat minx = -1, maxx = 1, miny = -1, maxy = 1;
@@ -4744,11 +4657,7 @@ public:
                      iTVPTexture2D *reftar, const tTVPRect &rctar,
                      const tRenderTexRectArray &textures) override {
         ++_drawCount;
-        ++_perfRectCalls;
-        MaybeReportOGLProfile();
         tTVPOGLRenderMethod *method = (tTVPOGLRenderMethod *)_method;
-        if(method->tar_as_src)
-            ++_perfTargetAsSrcRect;
         tTVPOGLTexture2D *tar = (tTVPOGLTexture2D *)_tar;
         if(reftar == _tar)
             reftar = nullptr;
@@ -4849,7 +4758,6 @@ public:
                 static_cast<unsigned int>(texlist.size() - 1);
             glBindSampler(feedbackUnit, TVPGetFeedbackNearestSampler());
             glTextureBarrier();
-            ++_perfTextureBarrierDraws;
         }
 #endif
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -4902,11 +4810,7 @@ public:
                           const tTVPRect &rcclip, const tTVPPointD *_pttar,
                           const tRenderTexQuadArray &textures) override {
         ++_drawCount;
-        ++_perfTriangleCalls;
-        MaybeReportOGLProfile();
         tTVPOGLRenderMethod *method = (tTVPOGLRenderMethod *)_method;
-        if(method->tar_as_src)
-            ++_perfTargetAsSrcTriangle;
         tTVPOGLTexture2D *tar = (tTVPOGLTexture2D *)_tar;
         if(_tar == reftar)
             reftar = nullptr;
@@ -5042,7 +4946,6 @@ public:
                 static_cast<unsigned int>(texlist.size() - 1);
             glBindSampler(feedbackUnit, TVPGetFeedbackNearestSampler());
             glTextureBarrier();
-            ++_perfTextureBarrierDraws;
         }
 #endif
         glDrawArrays(GL_TRIANGLES, 0, ptcount);
