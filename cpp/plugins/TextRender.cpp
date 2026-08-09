@@ -647,6 +647,7 @@ private:
     uint32_t m_mode = 0;
     int m_lineIndex = 0;
     float m_lineCrossExtent = 0.0f;
+    bool m_lineFinalized = false;
 
     // Timing state recovered from the DLL.  m_elapsedDelay corresponds to the
     // unscaled cumulative character timeline (+0x210 during a segment);
@@ -669,6 +670,7 @@ private:
     void pushGraphicalCharacter(const ttstr &graph);
     void performLinebreak();
     void flush(bool force = false);
+    void finalizeCurrentLine();
     void applyAlignment();
     void updateFont();
     void advanceWideSpace();
@@ -1194,12 +1196,20 @@ void TextRenderBase::performLinebreak() {
         m_x -= cross + m_state.lineSpacing;
         m_y = m_indent;
     } else {
+        // The DLL first places horizontal glyphs at
+        //     y = currentY - glyphSize
+        // and only when the line is finalized adds the resolved line height
+        // to every glyph in that line.  Omitting this second stage makes
+        // vertically-centered text sit about half an em too high.
+        finalizeCurrentLine();
+
         m_x = m_indent;
         m_y += cross + m_state.lineSpacing;
     }
 
     ++m_lineIndex;
     m_lineCrossExtent = 0.0f;
+    m_lineFinalized = false;
     m_isBeginningOfLine = true;
 }
 
@@ -1238,14 +1248,15 @@ void TextRenderBase::pushCharacter(tjs_char ch) {
 
     auto rasterizer = GetCurrentRasterizer();
     int advanceWidth = 0;
-    int advanceHeight = 0;
-    rasterizer->GetTextExtent(ch, advanceWidth, advanceHeight);
+    int ignoredHeight = 0;
+    rasterizer->GetTextExtent(ch, advanceWidth, ignoredHeight);
 
-    float size = static_cast<float>(advanceHeight);
-    if(size <= 0.0f)
-        size = static_cast<float>(rasterizer->GetAscentHeight());
-    if(size <= 0.0f)
-        size = m_fontScale * m_state.fontSize;
+    // Hard-confirmed from the CharacterInfo construction path in the
+    // original DLL (0x10012263..0x1001227d): `size` is not the rasterizer's
+    // measured glyph height.  It is the current font size multiplied by the
+    // TextRender fontScale.  This value is also what the horizontal placement
+    // path subtracts from the baseline-like Y cursor.
+    const float size = m_state.fontSize * m_fontScale;
 
     CharacterInfo info{};
     info.graph = false;
@@ -1347,10 +1358,16 @@ void TextRenderBase::flush(bool force) {
 
             if(over && !force) {
                 const float cross = std::max(m_lineCrossExtent, m_state.lineSize);
+
+                // The buffered kinsoku group belongs on the next line, so
+                // finalize the already-placed line before advancing currentY.
+                finalizeCurrentLine();
+
                 m_x = m_indent;
                 m_y += cross + m_state.lineSpacing;
                 ++m_lineIndex;
                 m_lineCrossExtent = 0.0f;
+                m_lineFinalized = false;
 
                 for(auto &pending : m_buffer)
                     pending.lineIndex = m_lineIndex;
@@ -1359,7 +1376,11 @@ void TextRenderBase::flush(bool force) {
             }
 
             ch.x = m_x;
-            ch.y = m_y;
+            // Original TextRender.dll uses a baseline-like horizontal cursor:
+            // CharacterInfo.y = currentY - CharacterInfo.size.
+            // Keeping y=currentY shifts the whole visual glyph box downward
+            // and then makes the final vertical block alignment offset wrong.
+            ch.y = m_y - ch.size;
             m_x = newX;
             m_lineCrossExtent = std::max(m_lineCrossExtent, ch.size);
         }
@@ -1370,6 +1391,47 @@ void TextRenderBase::flush(bool force) {
         m_characters.push_back(ch);
     }
     m_buffer.clear();
+    m_lineFinalized = false;
+    recomputeRenderBounds();
+}
+
+void TextRenderBase::finalizeCurrentLine() {
+    if(m_vertical || m_lineFinalized)
+        return;
+
+    bool hasCharacters = false;
+    for(const auto &ch : m_characters) {
+        if(ch.lineIndex == m_lineIndex) {
+            hasCharacters = true;
+            break;
+        }
+    }
+
+    if(!hasCharacters) {
+        m_lineFinalized = true;
+        return;
+    }
+
+    // Horizontal branch of the original 0x100111d0 line-finalizer:
+    //
+    //   lineHeight = max(max(CharacterInfo.size), lineSize)
+    //   CharacterInfo.y += lineHeight
+    //
+    // CharacterInfo.y was initially written as currentY - size, so this
+    // produces bottom-aligned glyphs inside the resolved line box:
+    //
+    //   finalY = currentY + lineHeight - size
+    //
+    // This is deliberately not an empirical visual offset.
+    const float lineHeight =
+        std::max(m_lineCrossExtent, m_state.lineSize);
+
+    for(auto &ch : m_characters) {
+        if(ch.lineIndex == m_lineIndex)
+            ch.y += lineHeight / 2.0;
+    }
+
+    m_lineFinalized = true;
     recomputeRenderBounds();
 }
 
@@ -1744,6 +1806,7 @@ void TextRenderBase::clear() {
     m_mode = kTextRenderModeLeading;
     m_lineIndex = 0;
     m_lineCrossExtent = 0.0f;
+    m_lineFinalized = false;
     m_isBeginningOfLine = true;
     m_elapsedDelay = 0.0f;
     m_pendingRuby = TJS_W("");
@@ -1824,6 +1887,11 @@ void TextRenderBase::updateFont() {
 void TextRenderBase::done() {
     dbg_print(TJS_W("flush character buffer"));
     flush();
+
+    // done() in the DLL finalizes the current line before the whole-block
+    // align/valign pass.  This is essential for correct horizontal Y.
+    finalizeCurrentLine();
+
     applyAlignment();
 }
 
