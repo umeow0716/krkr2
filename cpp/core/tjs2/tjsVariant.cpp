@@ -866,12 +866,10 @@ namespace TJS {
         tTJSVariantString *s1, *s2;
         s1 = AsString();
         s2 = val2.AsString();
-        const tjs_char *p1 = *s1;
-        const tjs_char *p2 = *s2;
-        if(!p1)
-            p1 = TJS_W("");
-        if(!p2)
-            p2 = TJS_W("");
+        const tjs_char *p1 =
+            s1 ? s1->operator const tjs_char *() : TJS_W("");
+        const tjs_char *p2 =
+            s2 ? s2->operator const tjs_char *() : TJS_W("");
         bool res = TJS_strcmp(p1, p2) < 0;
         if(s1)
             s1->Release();
@@ -894,12 +892,10 @@ namespace TJS {
         tTJSVariantString *s1, *s2;
         s1 = AsString();
         s2 = val2.AsString();
-        const tjs_char *p1 = *s1;
-        const tjs_char *p2 = *s2;
-        if(!p1)
-            p1 = TJS_W("");
-        if(!p2)
-            p2 = TJS_W("");
+        const tjs_char *p1 =
+            s1 ? s1->operator const tjs_char *() : TJS_W("");
+        const tjs_char *p2 =
+            s2 ? s2->operator const tjs_char *() : TJS_W("");
         bool res = TJS_strcmp(p1, p2) > 0;
         if(s1)
             s1->Release();
@@ -934,8 +930,12 @@ namespace TJS {
 
     //---------------------------------------------------------------------------
     void tTJSVariant::increment() {
-        if(vt == tvtString)
-            String->ToNumber(*this);
+        if(vt == tvtString) {
+            if(String)
+                String->ToNumber(*this);
+            else
+                vt = tvtInteger, Integer = 0;
+        }
 
         if(vt == tvtReal) {
             TJSSetFPUE();
@@ -950,8 +950,12 @@ namespace TJS {
 
     //---------------------------------------------------------------------------
     void tTJSVariant::decrement() {
-        if(vt == tvtString)
-            String->ToNumber(*this);
+        if(vt == tvtString) {
+            if(String)
+                String->ToNumber(*this);
+            else
+                vt = tvtInteger, Integer = 0;
+        }
 
         if(vt == tvtReal) {
             TJSSetFPUE();
@@ -1075,7 +1079,10 @@ namespace TJS {
             return; // nothing to do
 
         if(vt == tvtString) {
-            String->ToNumber(*this);
+            if(String)
+                String->ToNumber(*this);
+            else
+                *this = (tjs_int)0;
             return;
         }
 
@@ -1144,7 +1151,11 @@ namespace TJS {
             tTJSVariantString *s1, *s2;
             s1 = AsString();
             s2 = rhs.AsString();
-            val.String = TJSAllocVariantString(*s1, *s2);
+            const tjs_char *p1 =
+                s1 ? s1->operator const tjs_char *() : TJS_W("");
+            const tjs_char *p2 =
+                s2 ? s2->operator const tjs_char *() : TJS_W("");
+            val.String = TJSAllocVariantString(p1, p2);
             if(s1)
                 s1->Release();
             if(s2)

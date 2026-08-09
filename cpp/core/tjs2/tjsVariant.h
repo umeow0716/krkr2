@@ -795,7 +795,7 @@ namespace TJS {
             // returns String
             if(vt != tvtString)
                 TJSThrowVariantConvertError(*this, tvtString);
-            return *String;
+            return String ? String->operator const tjs_char *() : TJS_W("");
         }
 
         TJS_METHOD_DEF(tjs_uint32 *, GetHint, ()) {
@@ -866,7 +866,7 @@ namespace TJS {
                 case tvtObject:
                     TJSThrowVariantConvertError(*this, tvtInteger);
                 case tvtString:
-                    return String->ToInteger();
+                    return String ? String->ToInteger() : 0;
                 case tvtInteger:
                     return Integer;
                 case tvtReal:
@@ -886,7 +886,10 @@ namespace TJS {
                 case tvtObject:
                     TJSThrowVariantConvertError(*this, tvtInteger, tvtReal);
                 case tvtString:
-                    String->ToNumber(targ);
+                    if(String)
+                        String->ToNumber(targ);
+                    else
+                        targ = (tjs_int)0;
                     return;
                 case tvtInteger:
                     targ = Integer;
@@ -943,7 +946,7 @@ namespace TJS {
                 case tvtObject:
                     TJSThrowVariantConvertError(*this, tvtReal);
                 case tvtString:
-                    return String->ToReal();
+                    return String ? String->ToReal() : 0;
                 case tvtInteger:
                     return (tTVReal)Integer;
                 case tvtReal:
@@ -1162,6 +1165,8 @@ namespace TJS {
                 return *this;
 
             if(vt == tvtString) {
+                if(!String)
+                    return 0;
                 tTJSVariant val;
                 String->ToNumber(val);
                 return val;
@@ -1212,7 +1217,11 @@ namespace TJS {
                 tTJSVariantString *s1, *s2;
                 s1 = AsString();
                 s2 = rhs.AsString();
-                val.String = TJSAllocVariantString(*s1, *s2);
+                const tjs_char *p1 =
+                    s1 ? s1->operator const tjs_char *() : TJS_W("");
+                const tjs_char *p2 =
+                    s2 ? s2->operator const tjs_char *() : TJS_W("");
+                val.String = TJSAllocVariantString(p1, p2);
                 if(s1)
                     s1->Release();
                 if(s2)
