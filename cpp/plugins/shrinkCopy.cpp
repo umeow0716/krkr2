@@ -468,20 +468,34 @@ private:
                         tjs_int sourceStep, tjs_int sampleStep) {
         for(tjs_int output = 0; output < outputCount;
             ++output, source += sourceStep) {
-            std::uint64_t red = 0;
-            std::uint64_t green = 0;
-            std::uint64_t blue = 0;
+            std::uint64_t premulRed = 0;
+            std::uint64_t premulGreen = 0;
+            std::uint64_t premulBlue = 0;
+            std::uint64_t alpha = 0;
+
             const Byte *sample = source;
             for(tjs_int index = 0; index < sampleCount;
                 ++index, sample += sampleStep) {
-                red += sample[0];
-                green += sample[1];
-                blue += sample[2];
+                const std::uint64_t a = sample[3];
+
+                premulRed += sample[0] * a;
+                premulGreen += sample[1] * a;
+                premulBlue += sample[2] * a;
+                alpha += a;
             }
-            *destination++ = static_cast<Byte>(red / sampleCount);
-            *destination++ = static_cast<Byte>(green / sampleCount);
-            *destination++ = static_cast<Byte>(blue / sampleCount);
-            *destination++ = 255;
+
+            if(alpha != 0) {
+                *destination++ = static_cast<Byte>(premulRed / alpha);
+                *destination++ = static_cast<Byte>(premulGreen / alpha);
+                *destination++ = static_cast<Byte>(premulBlue / alpha);
+            } else {
+                *destination++ = 0;
+                *destination++ = 0;
+                *destination++ = 0;
+            }
+
+            *destination++ =
+                static_cast<Byte>(alpha / static_cast<std::uint64_t>(sampleCount));
         }
     }
 
