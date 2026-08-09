@@ -636,8 +636,52 @@ bool TVPMainScene::startupFrom(const std::string &path) {
 
     IndividualConfigManager *pGlobalCfgMgr =
         IndividualConfigManager::GetInstance();
-    pGlobalCfgMgr->UsePreferenceAt(
-        TVPBaseFileSelectorForm::pathSplit(path).first);
+
+    const std::string prefFolder =
+        TVPBaseFileSelectorForm::pathSplit(path).first;
+
+    const std::string prefFile =
+        prefFolder + "/Kirikiroid2Preference.xml";
+
+    const bool prefExists =
+        IndividualConfigManager::CheckExistAt(prefFolder);
+
+    const bool prefLoaded =
+        pGlobalCfgMgr->UsePreferenceAt(prefFolder);
+
+    // 注意：一定先 IsValueExist()。
+    // GetValue() 在不存在時會把 fallback 寫進設定 map，會污染偵錯結果。
+    const bool individualHasRenderer =
+        pGlobalCfgMgr->IsValueExist("renderer");
+
+    const std::string individualRenderer =
+        individualHasRenderer
+            ? pGlobalCfgMgr->GetValue<std::string>("renderer", "")
+            : "<missing>";
+
+    auto *globalCfg = GlobalConfigManager::GetInstance();
+
+    const bool globalHasRenderer =
+        globalCfg->IsValueExist("renderer");
+
+    const std::string globalRenderer =
+        globalHasRenderer
+            ? globalCfg->GetValue<std::string>("renderer", "")
+            : "<missing>";
+
+    spdlog::info(
+        "[renderer-config] startup='{}' folder='{}' file='{}' "
+        "exists={} loaded={} individualHasRenderer={} "
+        "individual='{}' global='{}'",
+        path,
+        prefFolder,
+        prefFile,
+        prefExists,
+        prefLoaded,
+        individualHasRenderer,
+        individualRenderer,
+        globalRenderer
+    );
     if(UINode->getChildrenCount()) {
         popUIForm(nullptr);
     }
@@ -744,8 +788,7 @@ void TVPMainScene::update(float delta) {
     // TVPWindowLayer::_currentWindowLayer->UpdateOverlay();
     iTVPTexture2D::RecycleProcess();
     //_ResotreGLStatues();
-    if(_postUpdate)
-        _postUpdate();
+    TVPInvokePostUpdateEvent();
     if(_fpsLabel) {
         unsigned int drawCount;
         uint64_t vmemsize;

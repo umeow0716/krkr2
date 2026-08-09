@@ -1,4 +1,5 @@
 #include "RenderManager.h"
+#include <cstdio>
 #include "renderer/CCTexture2D.h"
 typedef cocos2d::Texture2D::PixelFormat CCPixelFormat;
 #include "MsgIntf.h"
@@ -297,10 +298,14 @@ bool tTVPBitmap::Is8bit() const {
 static std::vector<iTVPTexture2D *> _toDeleteTextures;
 
 void iTVPTexture2D::RecycleProcess() {
-    for(iTVPTexture2D *tex : _toDeleteTextures) {
+    // Deleting a CPU texture may release its renderer shadow and enqueue that
+    // shadow here as well.  Pop one-by-one so additions made by destructors are
+    // handled safely in the same recycle pass.
+    while(!_toDeleteTextures.empty()) {
+        iTVPTexture2D *tex = _toDeleteTextures.back();
+        _toDeleteTextures.pop_back();
         delete tex;
     }
-    _toDeleteTextures.clear();
 }
 static tTVPAtExit TVPReleaseTexture2D(TVP_ATEXIT_PRI_RELEASE + 500,
                                       iTVPTexture2D::RecycleProcess);
@@ -313,8 +318,51 @@ void iTVPTexture2D::Release() {
 }
 
 class iTVPSoftwareTexture2D : public iTVPTexture2D {
+    tjs_uint64 ContentRevision = 1;
+    const void *RenderCacheOwner = nullptr;
+    iTVPTexture2D *RenderCacheTexture = nullptr;
+    tjs_uint64 RenderCacheRevision = 0;
+
+protected:
+    void MarkContentDirty() {
+        ++ContentRevision;
+        // Reserve zero for texture implementations that do not support
+        // revision tracking.
+        if(ContentRevision == 0)
+            ContentRevision = 1;
+    }
+
 public:
     iTVPSoftwareTexture2D(tjs_int w, tjs_int h) : iTVPTexture2D(w, h) {}
+    ~iTVPSoftwareTexture2D() override {
+        if(RenderCacheTexture)
+            RenderCacheTexture->Release();
+    }
+
+    tjs_uint64 GetContentRevision() const override { return ContentRevision; }
+
+    iTVPTexture2D *GetRenderCache(const void *owner,
+                                   tjs_uint64 &revision) override {
+        if(RenderCacheOwner != owner || !RenderCacheTexture) {
+            revision = 0;
+            return nullptr;
+        }
+        revision = RenderCacheRevision;
+        return RenderCacheTexture;
+    }
+
+    bool SetRenderCache(const void *owner, iTVPTexture2D *texture,
+                        tjs_uint64 revision) override {
+        if(RenderCacheTexture != texture) {
+            if(RenderCacheTexture)
+                RenderCacheTexture->Release();
+            RenderCacheTexture = texture;
+        }
+        RenderCacheOwner = owner;
+        RenderCacheRevision = revision;
+        return true;
+    }
+
     virtual size_t GetBitmapSize() = 0;
 };
 
@@ -331,6 +379,7 @@ public:
     void Update(const void *pixel, TVPTextureFormat::e format, int pitch,
                 const tTVPRect &rc) override {
         assert(rc.left == 0 && rc.top == 0 && Format == format);
+        MarkContentDirty();
         Pitch = pitch;
         BmpData = (tjs_uint8 *)pixel;
         Width = rc.get_width();
@@ -913,6 +962,7 @@ public:
     void Update(const void *pixel, TVPTextureFormat::e format, int pitch,
                 const tTVPRect &rc) override {
         assert(rc.left == 0);
+        MarkContentDirty();
         unsigned char *src = (unsigned char *)pixel;
         tjs_uint8 *dst = (tjs_uint8 *)Bitmap->GetScanLine(rc.top);
         int dstPitch = Bitmap->GetPitch();
@@ -945,6 +995,7 @@ public:
     }
 
     void SetPoint(int x, int y, uint32_t clr) override {
+        MarkContentDirty();
         if(Bitmap->Is32bit())
             *((tjs_uint32 *)Bitmap->GetScanLine(y) + x) = clr; // 32bpp
         else
@@ -954,6 +1005,7 @@ public:
     bool IsStatic() override { return false; }
     bool IsOpaque() override { return Bitmap->IsOpaque; }
     void *GetScanLineForWrite(tjs_uint l) override {
+        MarkContentDirty();
         Bitmap->IsOpaque = false;
         return (void *)GetScanLineForRead(l);
     }
@@ -4884,12 +4936,16 @@ iTVPRenderManager *TVPGetRenderManager(const ttstr &name) {
 
 iTVPRenderManager *TVPGetRenderManager() {
     static iTVPRenderManager *_RenderManager;
+
     if(!_RenderManager) {
-        ttstr str =
-            IndividualConfigManager::GetInstance()->GetValue<std::string>(
-                "renderer", "software");
-        _RenderManager = TVPGetRenderManager(str);
+        _RenderManager = TVPGetRenderManager(TJS_W("opengl"));
+
+        std::fprintf(
+            stderr,
+            "[render-manager] active=%s\n",
+            _RenderManager->IsSoftware() ? "software" : "opengl");
     }
+
     return _RenderManager;
 }
 

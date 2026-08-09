@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cmath>
+#include <chrono>
 #include <spdlog/spdlog.h>
 
 #include "tjsArray.h"
@@ -8160,6 +8161,14 @@ void tTJSNI_BaseLayer::tTransDrawable::DrawCompleted(const tTVPRect &destrect,
     if(!Owner->InTransition || !Owner->DivisibleTransHandler)
         return;
 
+    using TVPProfileClock = std::chrono::steady_clock;
+    const auto profile_begin = TVPProfileClock::now();
+    long long source_complete_us = 0;
+    long long temp_alloc_us = 0;
+    long long process_us = 0;
+    long long output_us = 0;
+    long long temp_free_us = 0;
+
     tTVPDivisibleData data;
     data.Left = destrect.left - Owner->Rect.left;
     data.Top = destrect.top - Owner->Rect.top;
@@ -8186,10 +8195,14 @@ void tTJSNI_BaseLayer::tTransDrawable::DrawCompleted(const tTVPRect &destrect,
     if(Owner->TransSrc) {
         // source available
         // prepare source 2 from CacheBitmap
+        const auto source_complete_begin = TVPProfileClock::now();
         if(Owner->TransUpdateType == tutDivisible)
             src = Src2Bmp;
         else
             src = Owner->TransSrc->Complete(destrect);
+        source_complete_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                 TVPProfileClock::now() - source_complete_begin)
+                                 .count();
         if(!Owner->TransSrc->SrcSLP)
             Owner->TransSrc->SrcSLP =
                 new tTVPScanLineProviderForBaseBitmap(src);
@@ -8208,9 +8221,13 @@ void tTJSNI_BaseLayer::tTransDrawable::DrawCompleted(const tTVPRect &destrect,
     if(bmp == Target || Target == nullptr) {
         // source bitmap is the same as the Original Target;
         // allocatte temporary bitmap
+        const auto temp_alloc_begin = TVPProfileClock::now();
         dest = tTVPTempBitmapHolder::GetTemp(cliprect.get_width(),
                                              cliprect.get_height(),
                                              true); // fit = true
+        temp_alloc_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                            TVPProfileClock::now() - temp_alloc_begin)
+                            .count();
 
         // TODO: check whether "fit" can affect the performance
 
@@ -8234,9 +8251,14 @@ void tTJSNI_BaseLayer::tTransDrawable::DrawCompleted(const tTVPRect &destrect,
     }
 
     try {
+        const auto process_begin = TVPProfileClock::now();
         Owner->DivisibleTransHandler->Process(&data);
-        tTVPRect cr = cliprect;
+        process_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                         TVPProfileClock::now() - process_begin)
+                         .count();
 
+        tTVPRect cr = cliprect;
+        const auto output_begin = TVPProfileClock::now();
         if(data.Dest == Owner->DestSLP) {
             cr.set_offsets(data.DestLeft, data.DestTop);
             OrgDrawable->DrawCompleted(destrect, dest, cr, type, opacity);
@@ -8247,14 +8269,39 @@ void tTJSNI_BaseLayer::tTransDrawable::DrawCompleted(const tTVPRect &destrect,
             cr.set_offsets(data.DestLeft, data.DestTop);
             OrgDrawable->DrawCompleted(destrect, src, cr, type, opacity);
         }
+        output_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        TVPProfileClock::now() - output_begin)
+                        .count();
     } catch(...) {
         if(tempalloc)
             tTVPTempBitmapHolder::FreeTemp();
         throw;
     }
 
-    if(tempalloc)
+    if(tempalloc) {
+        const auto temp_free_begin = TVPProfileClock::now();
         tTVPTempBitmapHolder::FreeTemp();
+        temp_free_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                           TVPProfileClock::now() - temp_free_begin)
+                           .count();
+    }
+
+    const long long total_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            TVPProfileClock::now() - profile_begin)
+            .count();
+    if(total_us >= 2000) {
+        spdlog::info(
+            "[trans-pipeline] total={:.3f}ms sourceComplete={:.3f}ms "
+            "tempAlloc={:.3f}ms process={:.3f}ms output={:.3f}ms "
+            "tempFree={:.3f}ms rect={}x{} withChildren={} renderer={}",
+            total_us / 1000.0, source_complete_us / 1000.0,
+            temp_alloc_us / 1000.0, process_us / 1000.0,
+            output_us / 1000.0, temp_free_us / 1000.0,
+            cliprect.get_width(), cliprect.get_height(),
+            Owner->TransWithChildren ? 1 : 0,
+            TVPIsSoftwareRenderManager() ? "software" : "opengl");
+    }
 }
 
 //---------------------------------------------------------------------------

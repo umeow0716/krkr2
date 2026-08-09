@@ -127,6 +127,22 @@ public:
     virtual tjs_int GetPitch() const { return 0x100000; }
     bool IsIndependent() const { return RefCount == 1; }
 
+    // CPU-backed textures can optionally cache a renderer-specific shadow
+    // texture.  The cache takes ownership of the initial reference passed to
+    // SetRenderCache() when it returns true.  ContentRevision is incremented
+    // whenever writable CPU pixels change, allowing the renderer to update the
+    // shadow only when necessary instead of re-uploading on every draw.
+    virtual tjs_uint64 GetContentRevision() const { return 0; }
+    virtual iTVPTexture2D *GetRenderCache(const void *owner,
+                                           tjs_uint64 &revision) {
+        revision = 0;
+        return nullptr;
+    }
+    virtual bool SetRenderCache(const void *owner, iTVPTexture2D *texture,
+                                tjs_uint64 revision) {
+        return false;
+    }
+
     // virtual tGLTexture* GetTexture() = 0;
     virtual void Update(const void *pixel, TVPTextureFormat::e format,
                         int pitch, const tTVPRect &rc) = 0;

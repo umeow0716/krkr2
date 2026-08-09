@@ -6,17 +6,33 @@
 #include <cocos2d.h>
 #include "Platform.h"
 
-static inline void (*_postUpdate)() = nullptr;
+using TVPPostUpdateCallback = void (*)();
 
-inline void TVPSetPostUpdateEvent(void (*f)()) { _postUpdate = f; }
+// This must be shared by every translation unit.  A namespace-scope
+// `static inline` variable gives each .cpp its own callback slot, so the
+// OpenGL renderer can register the restore callback in one TU while
+// MainScene sees a different (null) slot.
+inline TVPPostUpdateCallback &TVPGetPostUpdateCallbackSlot() {
+    static TVPPostUpdateCallback callback = nullptr;
+    return callback;
+}
+
+inline void TVPSetPostUpdateEvent(TVPPostUpdateCallback f) {
+    TVPGetPostUpdateCallbackSlot() = f;
+}
+
+inline void TVPInvokePostUpdateEvent() {
+    TVPPostUpdateCallback f = TVPGetPostUpdateCallbackSlot();
+    if(f)
+        f();
+}
 
 inline int TVPDrawSceneOnce(int interval) {
     static tjs_uint64 lastTick = TVPGetRoughTickCount32();
     tjs_uint64 curTick = TVPGetRoughTickCount32();
     int remain = interval - (curTick - lastTick);
     if(remain <= 0) {
-        if(_postUpdate)
-            _postUpdate();
+        TVPInvokePostUpdateEvent();
         auto *director = cocos2d::Director::getInstance();
         director->drawScene();
         TVPForceSwapBuffer();

@@ -1,6 +1,8 @@
 #include "TVPWindow.h"
 #include <cocos2d.h>
 #include <cocos-ext.h>
+#include <chrono>
+#include <spdlog/spdlog.h>
 
 #include "cocos2d/MainScene.h"
 #include "Application.h"
@@ -564,7 +566,18 @@ void TVPWindowLayer::UpdateDrawBuffer(iTVPTexture2D *tex) {
     if(!tex)
         return;
     cocos2d::Texture2D *tex2d = DrawSprite->getTexture();
+    const auto adapter_begin = std::chrono::steady_clock::now();
     cocos2d::Texture2D *newtex = tex->GetAdapterTexture(tex2d);
+    const auto adapter_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::steady_clock::now() - adapter_begin)
+                                .count();
+    if(adapter_us >= 2000) {
+        spdlog::info(
+            "[texture-adapter] time={:.3f}ms texture={}x{} internal={}x{} renderer={}",
+            adapter_us / 1000.0, tex->GetWidth(), tex->GetHeight(),
+            tex->GetInternalWidth(), tex->GetInternalHeight(),
+            TVPIsSoftwareRenderManager() ? "software" : "opengl");
+    }
     if(tex2d != newtex) {
         DrawSprite->setTexture(newtex);
         float sw, sh;
