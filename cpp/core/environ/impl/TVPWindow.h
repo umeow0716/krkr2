@@ -402,8 +402,14 @@ public:
         denom = denom / a;
         ZoomNumer = numer;
         ZoomDenom = denom;
-        ActualZoomDenom = denom;
-        ActualZoomNumer = numer;
+
+        // In windowed mode the requested zoom is also the actual zoom.  In
+        // fullscreen RecalcPaintBox() derives ActualZoom from the fullscreen
+        // client area and source layer instead; do not overwrite it here.
+        if(!GetFullScreenMode()) {
+            ActualZoomDenom = denom;
+            ActualZoomNumer = numer;
+        }
         RecalcPaintBox();
     }
 

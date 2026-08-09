@@ -31,18 +31,31 @@ void iWindowLayer::SetFullScreenMode(bool fullscreen) {
     (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
     auto *view = dynamic_cast<cocos2d::GLViewImpl *>(
         cocos2d::Director::getInstance()->getOpenGLView());
-    if(!view || view->isFullscreen() == fullscreen)
+    if(!view)
         return;
 
-    if(fullscreen) {
-        TVPDesktopWindowedSize = view->getFrameSize();
-        view->setFullscreen();
-    } else {
-        const int width = static_cast<int>(TVPDesktopWindowedSize.width);
-        const int height = static_cast<int>(TVPDesktopWindowedSize.height);
-        view->setWindowed(width > 0 ? width : 960, height > 0 ? height : 640);
+    // setFullscreen()/setWindowed() can synchronously emit the Cocos resize
+    // event.  RecalcPaintBox() may therefore run *inside* these calls.  Keep
+    // our logical fullscreen state up to date before making the call so that
+    // the resize callback does not reuse the stale windowed ActualZoom.
+    TVPDesktopFullScreen = fullscreen;
+
+    if(view->isFullscreen() != fullscreen) {
+        if(fullscreen) {
+            TVPDesktopWindowedSize = view->getFrameSize();
+            view->setFullscreen();
+        } else {
+            const int width = static_cast<int>(TVPDesktopWindowedSize.width);
+            const int height = static_cast<int>(TVPDesktopWindowedSize.height);
+            view->setWindowed(width > 0 ? width : 960,
+                              height > 0 ? height : 640);
+        }
     }
-    TVPDesktopFullScreen = view->isFullscreen();
+
+    // The resize event can happen before the backend has finished updating all
+    // of its state.  Do one explicit pass after the mode switch as well.
+    if(TVPWindowLayer::_currentWindowLayer)
+        TVPWindowLayer::_currentWindowLayer->RecalcPaintBox();
 #else
     (void)fullscreen;
 #endif
@@ -52,9 +65,10 @@ bool iWindowLayer::GetFullScreenMode() const {
 #if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) ||                               \
     (CC_TARGET_PLATFORM == CC_PLATFORM_MAC) ||                                 \
     (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
-    auto *view = dynamic_cast<cocos2d::GLViewImpl *>(
-        cocos2d::Director::getInstance()->getOpenGLView());
-    return view ? view->isFullscreen() : TVPDesktopFullScreen;
+    // This is intentionally our own state, not GLViewImpl::isFullscreen().
+    // During setFullscreen()/setWindowed() the resize callback can observe the
+    // GLView state in a transitional value.
+    return TVPDesktopFullScreen;
 #else
     return false;
 #endif
@@ -475,6 +489,40 @@ void TVPWindowLayer::ResetDrawSprite() const {
 void TVPWindowLayer::RecalcPaintBox() {
     if(!LayerWidth || !LayerHeight)
         return;
+
+    // ZoomNumer/ZoomDenom is the zoom requested by the game.  ActualZoom is
+    // allowed to differ from it (this is what the original Kirikiri
+    // fullscreen path did).  The cocos2d backend previously left ActualZoom
+    // at the windowed value when entering fullscreen, so a 1448x814 window
+    // stayed 1448x814 inside a 1920x1080 fullscreen surface.
+    //
+    // In fullscreen, recompute the *actual* zoom from the current client area
+    // and the Kirikiri source layer.  Keep the requested ZoomNumer/ZoomDenom
+    // untouched so leaving fullscreen restores the game's original setting.
+    if(GetFullScreenMode()) {
+        const cocos2d::Size content = getContentSize();
+        if(content.width > 0 && content.height > 0) {
+            const double scaleX = content.width / LayerWidth;
+            const double scaleY = content.height / LayerHeight;
+
+            if(scaleX <= scaleY) {
+                ActualZoomNumer = static_cast<tjs_int>(content.width + 0.5f);
+                ActualZoomDenom = LayerWidth;
+            } else {
+                ActualZoomNumer = static_cast<tjs_int>(content.height + 0.5f);
+                ActualZoomDenom = LayerHeight;
+            }
+
+            if(ActualZoomNumer <= 0)
+                ActualZoomNumer = 1;
+            if(ActualZoomDenom <= 0)
+                ActualZoomDenom = 1;
+        }
+    } else {
+        ActualZoomNumer = ZoomNumer;
+        ActualZoomDenom = ZoomDenom;
+    }
+
     ResetDrawSprite();
     cocos2d::Size size = getViewSize();
     cocos2d::Size contSize = getContentSize();

@@ -73,7 +73,7 @@ bool TVPAppDelegate::applicationDidFinishLaunching() {
     // Set the design resolution
     glview->setDesignResolutionSize(designResolutionSize.width,
                                     designResolutionSize.height,
-                                    ResolutionPolicy::SHOW_ALL);
+                                    ResolutionPolicy::FIXED_HEIGHT);
     // glview->setFrameSize(designResolutionSize.width * 1.5f,
     //                      designResolutionSize.height * 1.5f);
 #endif

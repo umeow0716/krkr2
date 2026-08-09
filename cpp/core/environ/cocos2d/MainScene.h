@@ -15,6 +15,7 @@ class TVPMainScene : public cocos2d::Scene, public cocos2d::IMEDelegate {
     static TVPMainScene *create();
     void update(float delta) override;
     void initialize();
+    void dumpRenderMetrics(const char *reason) const;
     friend class TVPAppDelegate;
 
 public:

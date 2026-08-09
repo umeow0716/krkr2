@@ -455,6 +455,38 @@ void TVPMainScene::initialize() {
     // GameNode->setPosition(getContentSize() / 2);
     addChild(GameNode, GAME_SCENE_ORDER);
 
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) ||                               \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_MAC) ||                                 \
+    (CC_TARGET_PLATFORM == CC_PLATFORM_LINUX)
+    auto *resizeListener = EventListenerCustom::create(
+        "glview_window_resized", [this](EventCustom *) {
+            auto *glview = cocos2d::Director::getInstance()->getOpenGLView();
+            if(!glview)
+                return;
+
+            // FIXED_HEIGHT changes the logical design width whenever the
+            // desktop window aspect ratio changes. Keep the scene and the
+            // Kirikiri viewport in the same logical coordinate space.
+            const cocos2d::Size design = glview->getDesignResolutionSize();
+
+            setContentSize(design);
+            GameNode->setContentSize(design);
+            UINode->setContentSize(design);
+            UISize = design;
+
+            if(TVPWindowLayer::_currentWindowLayer) {
+                TVPWindowLayer::_currentWindowLayer->setViewSize(design);
+                TVPWindowLayer::_currentWindowLayer->RecalcPaintBox();
+            }
+
+            dumpRenderMetrics("window-resized");
+        });
+    _eventDispatcher->addEventListenerWithSceneGraphPriority(resizeListener,
+                                                              this);
+#endif
+
+    dumpRenderMetrics("initialize");
+
     EventListenerKeyboard *keylistener = EventListenerKeyboard::create();
     keylistener->onKeyPressed = CC_CALLBACK_2(TVPMainScene::onKeyPressed, this);
     keylistener->onKeyReleased =
@@ -633,6 +665,21 @@ bool TVPMainScene::startupFrom(const std::string &path) {
                  "startup");
 
     return true;
+}
+
+void TVPMainScene::dumpRenderMetrics(const char *reason) const {
+    auto *director = cocos2d::Director::getInstance();
+    auto *glview = director->getOpenGLView();
+    if(!glview)
+        return;
+
+    const cocos2d::Size frame = glview->getFrameSize();
+    const cocos2d::Size design = glview->getDesignResolutionSize();
+    const cocos2d::Size visible = glview->getVisibleSize();
+    const cocos2d::Vec2 origin = glview->getVisibleOrigin();
+    const cocos2d::Rect viewport = glview->getViewPortRect();
+    const cocos2d::Size game = GameNode ? GameNode->getContentSize()
+                                       : cocos2d::Size::ZERO;
 }
 
 void TVPMainScene::doStartup(float dt, std::string path) {
